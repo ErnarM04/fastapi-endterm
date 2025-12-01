@@ -120,6 +120,19 @@ def calculate_cart_total(cart_orm: CartORM) -> float:
 
 # --- Endpoints ---
 
+@app.get("/")
+def root():
+    return {
+        "message": "Store API",
+        "version": "0.1.0",
+        "docs": "/docs",
+        "endpoints": {
+            "products": "/products",
+            "carts": "/carts"
+        }
+    }
+
+
 @app.get("/products", response_model=List[Product])
 def list_products(db: Session = Depends(get_db)) -> List[Product]:
     products = db.query(ProductORM).all()
