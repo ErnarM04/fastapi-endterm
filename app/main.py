@@ -2,7 +2,7 @@ from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
-from sqlalchemy import ForeignKey, String
+from sqlalchemy import ForeignKey, String, or_
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 # Assuming your database.py is in the same folder
@@ -134,8 +134,21 @@ def root():
 
 
 @app.get("/products", response_model=List[Product])
-def list_products(db: Session = Depends(get_db)) -> List[Product]:
-    products = db.query(ProductORM).all()
+def list_products(
+    q: str | None = None, db: Session = Depends(get_db)
+) -> List[Product]:
+    query = db.query(ProductORM)
+    if q:
+        search_term = f"%{q}%"
+        query = query.filter(
+            or_(
+                ProductORM.name.ilike(search_term),
+                ProductORM.description.ilike(search_term),
+                ProductORM.brand.ilike(search_term),
+                ProductORM.category.ilike(search_term),
+            )
+        )
+    products = query.all()
     return [Product.model_validate(p) for p in products]
 
 
