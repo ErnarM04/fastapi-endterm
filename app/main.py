@@ -2,14 +2,15 @@ from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
-
-from .database import Base, engine, get_db
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
+# Assuming your database.py is in the same folder
+from .database import Base, engine, get_db
 
 app = FastAPI(title="Store API", version="0.1.0")
 
+# --- SQLAlchemy Models ---
 
 class ProductORM(Base):
     __tablename__ = "products"
@@ -53,8 +54,11 @@ class CartItemORM(Base):
     product: Mapped[ProductORM] = relationship(back_populates="items")
 
 
+# Create tables
 Base.metadata.create_all(bind=engine)
 
+
+# --- Pydantic Models ---
 
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
@@ -96,19 +100,25 @@ class Cart(BaseModel):
     items: List[CartItem]
 
 
-
 class CartSummary(Cart):
     total: float = 0.0
 
 
-def compute_total(cart: Cart) -> float:
+# --- Helper Function ---
+
+def calculate_cart_total(cart_orm: CartORM) -> float:
+    """
+    Calculates total based on the ORM relationships.
+    Accessing item.product triggers a lazy load from the DB.
+    """
     total = 0.0
-    for item in cart.items:
-        product = products.get(item.product_id)
-        if product:
-            total += product.price * item.quantity
+    for item in cart_orm.items:
+        if item.product:
+            total += item.product.price * item.quantity
     return round(total, 2)
 
+
+# --- Endpoints ---
 
 @app.get("/products", response_model=List[Product])
 def list_products(db: Session = Depends(get_db)) -> List[Product]:
@@ -159,16 +169,21 @@ def delete_product(product_id: int, db: Session = Depends(get_db)) -> None:
 
 @app.get("/carts", response_model=List[CartSummary])
 def list_carts(db: Session = Depends(get_db)) -> List[CartSummary]:
-    carts = db.query(CartORM).all()
+    carts_orm = db.query(CartORM).all()
     result: List[CartSummary] = []
-    for cart in carts:
-        items = [
+    
+    for cart in carts_orm:
+        # Calculate total using ORM relationship
+        total = calculate_cart_total(cart)
+        
+        # Convert ORM items to Pydantic items
+        pydantic_items = [
             CartItem(product_id=item.product_id, quantity=item.quantity)
             for item in cart.items
         ]
-        cart_model = Cart(id=cart.id, items=items)
-        total = compute_total(cart_model)
-        result.append(CartSummary(id=cart.id, items=items, total=total))
+        
+        result.append(CartSummary(id=cart.id, items=pydantic_items, total=total))
+    
     return result
 
 
@@ -186,11 +201,13 @@ def get_cart(cart_id: int, db: Session = Depends(get_db)) -> CartSummary:
     cart = db.get(CartORM, cart_id)
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
+    
+    total = calculate_cart_total(cart)
+    
     items = [
         CartItem(product_id=item.product_id, quantity=item.quantity)
         for item in cart.items
     ]
-    total = compute_total(Cart(id=cart.id, items=items))
     return CartSummary(id=cart.id, items=items, total=total)
 
 
@@ -201,13 +218,16 @@ def add_cart_item(
     cart = db.get(CartORM, cart_id)
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
+    
     product = db.get(ProductORM, item.product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    # Check if item exists in cart using ORM relationship
     existing = next(
         (ci for ci in cart.items if ci.product_id == item.product_id), None
     )
+    
     if existing:
         existing.quantity += item.quantity
     else:
@@ -217,12 +237,13 @@ def add_cart_item(
         db.add(cart_item)
 
     db.commit()
-    db.refresh(cart)
+    db.refresh(cart) # Refreshes relationships too
 
     items = [
         CartItem(product_id=ci.product_id, quantity=ci.quantity) for ci in cart.items
     ]
-    total = compute_total(Cart(id=cart.id, items=items))
+    total = calculate_cart_total(cart)
+    
     return CartSummary(id=cart.id, items=items, total=total)
 
 
@@ -235,6 +256,7 @@ def remove_cart_item(
         raise HTTPException(status_code=404, detail="Cart not found")
 
     item = next((ci for ci in cart.items if ci.product_id == product_id), None)
+    
     if item:
         db.delete(item)
         db.commit()
@@ -243,7 +265,8 @@ def remove_cart_item(
     items = [
         CartItem(product_id=ci.product_id, quantity=ci.quantity) for ci in cart.items
     ]
-    total = compute_total(Cart(id=cart.id, items=items))
+    total = calculate_cart_total(cart)
+    
     return CartSummary(id=cart.id, items=items, total=total)
 
 
@@ -255,4 +278,3 @@ def delete_cart(cart_id: int, db: Session = Depends(get_db)) -> None:
     db.delete(cart)
     db.commit()
     return None
-
