@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 from sqlalchemy import ForeignKey, String, or_
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
@@ -54,6 +54,15 @@ class CartItemORM(Base):
     product: Mapped[ProductORM] = relationship(back_populates="items")
 
 
+class FavoriteORM(Base):
+    __tablename__ = "favorites"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), unique=True)
+
+    product: Mapped[ProductORM] = relationship()
+
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -104,6 +113,14 @@ class CartSummary(Cart):
     total: float = 0.0
 
 
+class ProductPage(BaseModel):
+    page: int
+    pages: int
+    limit: int
+    total: int
+    products: List[Product]
+
+
 # --- Helper Function ---
 
 def calculate_cart_total(cart_orm: CartORM) -> float:
@@ -128,15 +145,19 @@ def root():
         "docs": "/docs",
         "endpoints": {
             "products": "/products",
-            "carts": "/carts"
+            "carts": "/carts",
+            "favorites": "/favorites",
         }
     }
 
 
-@app.get("/products", response_model=List[Product])
+@app.get("/products", response_model=ProductPage)
 def list_products(
-    q: str | None = None, db: Session = Depends(get_db)
-) -> List[Product]:
+    q: str | None = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> ProductPage:
     query = db.query(ProductORM)
     if q:
         search_term = f"%{q}%"
@@ -148,8 +169,19 @@ def list_products(
                 ProductORM.category.ilike(search_term),
             )
         )
-    products = query.all()
-    return [Product.model_validate(p) for p in products]
+
+    total = query.count()
+    pages = (total + limit - 1) // limit if total else 0
+    offset = (page - 1) * limit
+    products = query.offset(offset).limit(limit).all()
+
+    return ProductPage(
+        page=page,
+        pages=pages,
+        limit=limit,
+        total=total,
+        products=[Product.model_validate(p) for p in products],
+    )
 
 
 @app.get("/products/{product_id}", response_model=Product)
@@ -304,3 +336,39 @@ def delete_cart(cart_id: int, db: Session = Depends(get_db)) -> None:
     db.delete(cart)
     db.commit()
     return None
+
+
+# Favorites
+@app.get("/favorites", response_model=List[Product])
+def list_favorites(db: Session = Depends(get_db)) -> List[Product]:
+    favorites = db.query(FavoriteORM).join(ProductORM).all()
+    return [Product.model_validate(f.product) for f in favorites if f.product]
+
+
+@app.post("/favorites/{product_id}", response_model=Product, status_code=201)
+def add_favorite(product_id: int, db: Session = Depends(get_db)) -> Product:
+    product = db.get(ProductORM, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    existing = (
+        db.query(FavoriteORM).filter(FavoriteORM.product_id == product_id).first()
+    )
+    if existing:
+        return Product.model_validate(product)
+    favorite = FavoriteORM(product_id=product_id)
+    db.add(favorite)
+    db.commit()
+    return Product.model_validate(product)
+
+
+@app.delete("/favorites/{product_id}", status_code=204)
+def remove_favorite(product_id: int, db: Session = Depends(get_db)) -> None:
+    favorite = (
+        db.query(FavoriteORM).filter(FavoriteORM.product_id == product_id).first()
+    )
+    if not favorite:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+    db.delete(favorite)
+    db.commit()
+    return None
+    
