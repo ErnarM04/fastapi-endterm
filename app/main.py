@@ -1,6 +1,7 @@
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
 from sqlalchemy import ForeignKey, String, or_
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
@@ -9,6 +10,15 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 from .database import Base, engine, get_db
 
 app = FastAPI(title="Store API", version="0.1.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods
+    allow_headers=["*"],  # Allows all headers
+)
 
 # --- SQLAlchemy Models ---
 
