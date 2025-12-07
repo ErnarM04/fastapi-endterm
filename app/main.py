@@ -3,7 +3,7 @@ from typing import List
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, PositiveFloat, PositiveInt
-from sqlalchemy import ForeignKey, String, or_
+from sqlalchemy import ForeignKey, String, UniqueConstraint, or_
 from sqlalchemy.orm import Mapped, Session, mapped_column, relationship
 
 # Assuming your database.py is in the same folder
@@ -68,9 +68,12 @@ class FavoriteORM(Base):
     __tablename__ = "favorites"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), unique=True)
+    user_id: Mapped[int] = mapped_column(index=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
 
     product: Mapped[ProductORM] = relationship()
+
+    __table_args__ = (UniqueConstraint("user_id", "product_id", name="unique_user_product"),)
 
 
 # Create tables
@@ -156,7 +159,7 @@ def root():
         "endpoints": {
             "products": "/products",
             "carts": "/carts",
-            "favorites": "/favorites",
+            "favorites": "/favorites/{user_id}",
         }
     }
 
@@ -349,32 +352,45 @@ def delete_cart(cart_id: int, db: Session = Depends(get_db)) -> None:
 
 
 # Favorites
-@app.get("/favorites", response_model=List[Product])
-def list_favorites(db: Session = Depends(get_db)) -> List[Product]:
-    favorites = db.query(FavoriteORM).join(ProductORM).all()
+@app.get("/favorites/{user_id}", response_model=List[Product])
+def list_favorites(user_id: int, db: Session = Depends(get_db)) -> List[Product]:
+    favorites = (
+        db.query(FavoriteORM)
+        .filter(FavoriteORM.user_id == user_id)
+        .join(ProductORM)
+        .all()
+    )
     return [Product.model_validate(f.product) for f in favorites if f.product]
 
 
-@app.post("/favorites/{product_id}", response_model=Product, status_code=201)
-def add_favorite(product_id: int, db: Session = Depends(get_db)) -> Product:
+@app.post("/favorites/{user_id}/{product_id}", response_model=Product, status_code=201)
+def add_favorite(
+    user_id: int, product_id: int, db: Session = Depends(get_db)
+) -> Product:
     product = db.get(ProductORM, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     existing = (
-        db.query(FavoriteORM).filter(FavoriteORM.product_id == product_id).first()
+        db.query(FavoriteORM)
+        .filter(FavoriteORM.user_id == user_id, FavoriteORM.product_id == product_id)
+        .first()
     )
     if existing:
         return Product.model_validate(product)
-    favorite = FavoriteORM(product_id=product_id)
+    favorite = FavoriteORM(user_id=user_id, product_id=product_id)
     db.add(favorite)
     db.commit()
     return Product.model_validate(product)
 
 
-@app.delete("/favorites/{product_id}", status_code=204)
-def remove_favorite(product_id: int, db: Session = Depends(get_db)) -> None:
+@app.delete("/favorites/{user_id}/{product_id}", status_code=204)
+def remove_favorite(
+    user_id: int, product_id: int, db: Session = Depends(get_db)
+) -> None:
     favorite = (
-        db.query(FavoriteORM).filter(FavoriteORM.product_id == product_id).first()
+        db.query(FavoriteORM)
+        .filter(FavoriteORM.user_id == user_id, FavoriteORM.product_id == product_id)
+        .first()
     )
     if not favorite:
         raise HTTPException(status_code=404, detail="Favorite not found")
