@@ -68,7 +68,7 @@ class FavoriteORM(Base):
     __tablename__ = "favorites"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    user_id: Mapped[int] = mapped_column(index=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
 
     product: Mapped[ProductORM] = relationship()
@@ -353,7 +353,7 @@ def delete_cart(cart_id: int, db: Session = Depends(get_db)) -> None:
 
 # Favorites
 @app.get("/favorites/{user_id}", response_model=List[Product])
-def list_favorites(user_id: int, db: Session = Depends(get_db)) -> List[Product]:
+def list_favorites(user_id: str, db: Session = Depends(get_db)) -> List[Product]:
     favorites = (
         db.query(FavoriteORM)
         .filter(FavoriteORM.user_id == user_id)
@@ -365,7 +365,7 @@ def list_favorites(user_id: int, db: Session = Depends(get_db)) -> List[Product]
 
 @app.post("/favorites/{user_id}/{product_id}", response_model=Product, status_code=201)
 def add_favorite(
-    user_id: int, product_id: int, db: Session = Depends(get_db)
+    user_id: str, product_id: int, db: Session = Depends(get_db)
 ) -> Product:
     product = db.get(ProductORM, product_id)
     if not product:
@@ -385,7 +385,7 @@ def add_favorite(
 
 @app.delete("/favorites/{user_id}/{product_id}", status_code=204)
 def remove_favorite(
-    user_id: int, product_id: int, db: Session = Depends(get_db)
+    user_id: str, product_id: int, db: Session = Depends(get_db)
 ) -> None:
     favorite = (
         db.query(FavoriteORM)

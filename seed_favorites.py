@@ -15,11 +15,12 @@ def seed_favorites() -> None:
         print(f"Found {len(products)} products. Adding favorites for multiple users...")
         
         # Define favorites: user_id -> list of product indices to favorite
+        # Using string user_ids for Firebase authentication compatibility
         favorites_map = {
-            1: [0, 1, 2, 3, 4],  # User 1 favorites first 5 products
-            2: [5, 6, 7, 8],      # User 2 favorites next 4 products
-            3: [0, 5, 10, 15],    # User 3 favorites some scattered products
-            4: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # User 4 favorites many products
+            "user1": [0, 1, 2, 3, 4],  # User 1 favorites first 5 products
+            "user2": [5, 6, 7, 8],      # User 2 favorites next 4 products
+            "user3": [0, 5, 10, 15],    # User 3 favorites some scattered products
+            "user4": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # User 4 favorites many products
         }
         
         created = 0
