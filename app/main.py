@@ -49,6 +49,7 @@ class CartORM(Base):
     __tablename__ = "carts"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    user_id: Mapped[str] = mapped_column(String, unique=True, index=True)
 
     items: Mapped[List["CartItemORM"]] = relationship(
         back_populates="cart", cascade="all, delete-orphan"
@@ -174,7 +175,7 @@ def root():
         "docs": "/docs",
         "endpoints": {
             "products": "/products",
-            "carts": "/carts",
+            "carts": "/carts/{user_id}",
             "favorites": "/favorites/{user_id}",
         }
     }
@@ -254,38 +255,9 @@ def delete_product(product_id: int, db: Session = Depends(get_db)) -> None:
     return None
 
 
-@app.get("/carts", response_model=List[CartSummary])
-def list_carts(db: Session = Depends(get_db)) -> List[CartSummary]:
-    carts_orm = db.query(CartORM).all()
-    result: List[CartSummary] = []
-    
-    for cart in carts_orm:
-        # Calculate total using ORM relationship
-        total = calculate_cart_total(cart)
-        
-        # Convert ORM items to Pydantic items
-        pydantic_items = [
-            CartItem(product_id=item.product_id, quantity=item.quantity)
-            for item in cart.items
-        ]
-        
-        result.append(CartSummary(id=cart.id, items=pydantic_items, total=total))
-    
-    return result
-
-
-@app.post("/carts", response_model=Cart, status_code=201)
-def create_cart(db: Session = Depends(get_db)) -> Cart:
-    cart_orm = CartORM()
-    db.add(cart_orm)
-    db.commit()
-    db.refresh(cart_orm)
-    return Cart(id=cart_orm.id, items=[])
-
-
-@app.get("/carts/{cart_id}", response_model=CartSummary)
-def get_cart(cart_id: int, db: Session = Depends(get_db)) -> CartSummary:
-    cart = db.get(CartORM, cart_id)
+@app.get("/carts/{user_id}", response_model=CartSummary)
+def get_cart(user_id: str, db: Session = Depends(get_db)) -> CartSummary:
+    cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
@@ -298,11 +270,25 @@ def get_cart(cart_id: int, db: Session = Depends(get_db)) -> CartSummary:
     return CartSummary(id=cart.id, items=items, total=total)
 
 
-@app.post("/carts/{cart_id}/items", response_model=CartSummary)
+@app.post("/carts/{user_id}", response_model=Cart, status_code=201)
+def create_cart(user_id: str, db: Session = Depends(get_db)) -> Cart:
+    # Check if cart already exists for this user
+    existing_cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
+    if existing_cart:
+        return Cart(id=existing_cart.id, items=[])
+    
+    cart_orm = CartORM(user_id=user_id)
+    db.add(cart_orm)
+    db.commit()
+    db.refresh(cart_orm)
+    return Cart(id=cart_orm.id, items=[])
+
+
+@app.post("/carts/{user_id}/items", response_model=CartSummary)
 def add_cart_item(
-    cart_id: int, item: CartItem, db: Session = Depends(get_db)
+    user_id: str, item: CartItem, db: Session = Depends(get_db)
 ) -> CartSummary:
-    cart = db.get(CartORM, cart_id)
+    cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     
@@ -334,11 +320,11 @@ def add_cart_item(
     return CartSummary(id=cart.id, items=items, total=total)
 
 
-@app.delete("/carts/{cart_id}/items/{product_id}", response_model=CartSummary)
+@app.delete("/carts/{user_id}/items/{product_id}", response_model=CartSummary)
 def remove_cart_item(
-    cart_id: int, product_id: int, db: Session = Depends(get_db)
+    user_id: str, product_id: int, db: Session = Depends(get_db)
 ) -> CartSummary:
-    cart = db.get(CartORM, cart_id)
+    cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
 
@@ -357,9 +343,9 @@ def remove_cart_item(
     return CartSummary(id=cart.id, items=items, total=total)
 
 
-@app.delete("/carts/{cart_id}", status_code=204)
-def delete_cart(cart_id: int, db: Session = Depends(get_db)) -> None:
-    cart = db.get(CartORM, cart_id)
+@app.delete("/carts/{user_id}", status_code=204)
+def delete_cart(user_id: str, db: Session = Depends(get_db)) -> None:
+    cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
     if not cart:
         raise HTTPException(status_code=404, detail="Cart not found")
     db.delete(cart)
