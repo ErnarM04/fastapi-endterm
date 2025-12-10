@@ -27,13 +27,16 @@ class ProductORM(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     name: Mapped[str]
+    name_ru: Mapped[str]
     description: Mapped[str | None]
+    description_ru: Mapped[str | None]
     price: Mapped[float]
     discount_percentage: Mapped[float | None]
     rating: Mapped[float | None]
     stock: Mapped[int | None]
     brand: Mapped[str | None]
     category: Mapped[str | None]
+    category_ru: Mapped[str | None]
     thumbnail: Mapped[str | None]
     images: Mapped[str | None] = mapped_column(String(length=1000), nullable=True)
 
@@ -84,13 +87,16 @@ Base.metadata.create_all(bind=engine)
 
 class ProductBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
+    name_ru: str = Field(..., min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
+    description_ru: str = Field(..., min_length=1, max_length=500)
     price: PositiveFloat
     discount_percentage: float | None = None
     rating: float | None = None
     stock: int | None = None
     brand: str | None = None
     category: str | None = None
+    category_ru: str = Field(..., min_length=1, max_length=120)
     thumbnail: str | None = None
     images: str | None = None
 
@@ -101,8 +107,18 @@ class ProductCreate(ProductBase):
 
 class ProductUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
+    name_ru: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=500)
+    description_ru: str | None = Field(default=None, max_length=500)
     price: PositiveFloat | None = None
+    discount_percentage: float | None = None
+    rating: float | None = None
+    stock: int | None = None
+    brand: str | None = None
+    category: str | None = None
+    category_ru: str | None = None
+    thumbnail: str | None = None
+    images: str | None = None
 
 
 class Product(ProductBase):
