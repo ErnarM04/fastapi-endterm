@@ -58,21 +58,22 @@ def main() -> None:
         print(f"Failed to fetch from dummyjson: {exc}", file=sys.stderr)
         sys.exit(1)
     
-    # Get products starting from 30th (index 29) to 100th (index 99)
+    # Get products starting from 31st (index 30) to 100th (index 99)
     # Note: dummyjson returns products in an array, so we use 0-based indexing
-    # Products 30-100 means indices 29-99 (30 products total)
-    products = all_products[29:100]  # Slice from index 29 to 99
+    # Products 31-100 means indices 30-99 (70 products total)
+    # This ensures no overlap if original script posts products 1-30
+    products = all_products[30:100]  # Slice from index 30 to 99
     
     if not products:
         print("No products found in range 30-100.")
         return
     
-    print(f"Fetched {len(products)} products (30th to 100th), posting to {API_BASE}/products ...")
+    print(f"Fetched {len(products)} products (31st to 100th), posting to {API_BASE}/products ...")
     
     created = 0
     skipped = 0
     
-    for idx, p in enumerate(products, start=30):
+    for idx, p in enumerate(products, start=31):
         payload = to_payload(p)
         try:
             created_product = post_product(payload)
