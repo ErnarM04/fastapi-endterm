@@ -134,6 +134,10 @@ class CartItem(BaseModel):
     quantity: PositiveInt = 1
 
 
+class CartItemUpdate(BaseModel):
+    quantity: PositiveInt
+
+
 class Cart(BaseModel):
     id: int
     items: List[CartItem]
@@ -311,6 +315,31 @@ def add_cart_item(
 
     db.commit()
     db.refresh(cart) # Refreshes relationships too
+
+    items = [
+        CartItem(product_id=ci.product_id, quantity=ci.quantity) for ci in cart.items
+    ]
+    total = calculate_cart_total(cart)
+    
+    return CartSummary(id=cart.id, items=items, total=total)
+
+
+@app.put("/carts/{user_id}/items/{product_id}", response_model=CartSummary)
+def update_cart_item(
+    user_id: str, product_id: int, item_update: CartItemUpdate, db: Session = Depends(get_db)
+) -> CartSummary:
+    cart = db.query(CartORM).filter(CartORM.user_id == user_id).first()
+    if not cart:
+        raise HTTPException(status_code=404, detail="Cart not found")
+
+    item = next((ci for ci in cart.items if ci.product_id == product_id), None)
+    
+    if not item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    
+    item.quantity = item_update.quantity
+    db.commit()
+    db.refresh(cart)
 
     items = [
         CartItem(product_id=ci.product_id, quantity=ci.quantity) for ci in cart.items
